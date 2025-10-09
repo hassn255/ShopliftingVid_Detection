@@ -1,251 +1,140 @@
-# Video Classification for Stolen Content Detection
+# Shoplifting Video Detection Using Deep Learning
 
-A deep learning project implementing three architectures from scratch to classify videos as original or stolen content.
+This project implements a **video-based shoplifting detection system** using deep learning.  
+It aims to automatically classify short surveillance clips as **Shoplifting** or **Non-Shoplifting** behavior by analyzing temporal motion and spatial visual cues.
+
+---
 
 ## Project Overview
 
-This project provides a complete pipeline for video-based binary classification using three different neural network architectures:
-- **3D CNN**: Direct spatial-temporal convolutions on video volumes
-- **CNN-RNN**: Frame-wise CNN feature extraction + LSTM temporal modeling
-- **Transformer**: CNN backbone + self-attention mechanism for temporal dependencies
+Shoplifting detection in real-time video streams is a challenging task that requires understanding both **spatial** and **temporal** features.  
+To tackle this, the project explores several deep learning architectures:
+
+- **2D CNN + LSTM**
+- **2D CNN + GRU** ✅ *(Best performing model)*
+- **3D CNN**
+
+Although **Object Detection** and **Human Pose Estimation (HPE)** were initially explored, these approaches were set aside due to performance limitations and model complexity.  
+The final pipeline focuses on **sequence-based action recognition** using **2D CNN + GRU** for efficient and accurate classification.
+
+---
 
 ## Dataset
 
-**Location**: `/content/data/Shop Dataset` or `/content/Shop_DataSet.zip`
-
-**Structure**:
+- The dataset is organized into two main classes:
 ```
-Shop Dataset/
-├── original/     # Original videos (label 0)
-│   ├── video1.mp4
-│   └── ...
-└── stolen/       # Stolen videos (label 1)
-    ├── video1.mp4
-    └── ...
+Shop DataSet/
+├── non shop lifters/
+└── shop lifters/
 ```
+- Each folder contains surveillance video clips (`.mp4`, `.avi`, `.mov`).
+- Clips are preprocessed to have a fixed number of frames (default: 16).
 
-## Features
+---
 
-### Data Processing
-- Automatic video extraction and frame sampling (16 frames per video)
-- Uniform temporal sampling across video duration
-- Frame resizing to 112×112 pixels
-- Comprehensive data augmentation:
-  - Random horizontal flip
-  - Random rotation (±10°)
-  - Color jittering (brightness, contrast, saturation, hue)
-  - Random resized crop
-  - Gaussian blur
+## Preprocessing
 
-### Model Architectures
+Each video undergoes the following steps before being passed to the model:
 
-#### 1. 3D CNN
-- 6 convolutional blocks with batch normalization
-- Progressive channel expansion: 3 → 64 → 128 → 256 → 512
-- 3D max pooling for spatial-temporal down sampling
-- ~30M parameters
+1. **Frame Extraction** → Read all frames from each video.  
+2. **Frame Sampling** → Uniformly sample 16 frames to represent the entire clip.  
+3. **Transformations & Augmentation**
+ - Resize to **256×256**
+ - Random horizontal flips, brightness & contrast jittering, and rotation (for training only)
+ - Normalize pixel values to `[-1, 1]`
+4. **Tensor Stacking** → Frames are stacked into tensors of shape `[T, C, H, W]`.
 
-#### 2. CNN-RNN
-- 2D CNN encoder for per-frame feature extraction
-- Bidirectional LSTM for temporal sequence modeling
-- 2-layer LSTM with hidden size 256
-- ~25M parameters
+---
 
-#### 3. Video Transformer
-- CNN backbone for spatial features
-- 6-layer transformer encoder with 8 attention heads
-- Learnable positional encoding
-- CLS token for classification
-- ~35M parameters
+## Model Architectures
 
-## Installation
+### **2D CNN + GRU (Final Model)**
 
-```bash
-# Required packages
-pip install torch torch vision OpenCV-python NumPy matplotlib scikit-learn seaborn tqdm pandas
+Each frame is processed by a CNN for feature extraction, and the sequence of frame features is passed to a GRU to capture temporal motion.
 ```
-
-## Usage
-
-### Quick Start
-
-```python
-# Run complete pipeline
-python video_classification.py
+Input Video → CNN → Flatten → GRU → FC → Sigmoid → Binary Classification
 ```
+**Architecture Summary**
+| Component | Description |
+|------------|-------------|
+| CNN | 2 Conv layers (32→64 filters) + ReLU + MaxPooling + AdaptiveAvgPool(4×4) |
+| GRU | Input: 1024, Hidden: 256, Bidirectional |
+| FC Layer | Linear(512 → 1) |
+| Activation | Sigmoid (binary classification) |
 
-### Step-by-Step
+---
 
-```python
-# 1. Analyze dataset
-from data Analyzer import extract_and_analyze
-analyzer, df = extract_and_analyze()
+## Training Setup
 
-# 2. Train models
-from video classification import main
-main()
-```
+- **Loss Function:** Binary Cross-Entropy with Logits  
+- **Optimizer:** Adam  
+- **Learning Rate:** Started at `1e-3`, later fine-tuned to `1e-4`  
+- **Batch Size:** 4  
+- **Epochs:** 20 total (trained in 4 runs × 5 epochs)  
+- **Train/Val Split:** 80% / 20%
 
-### Custom Configuration
+Each run progressively improved accuracy and reduced validation loss.
 
-```python
-# Edit in main() function:
-DATA_PATH = '/content/data/Shop DataSet'
-NUM_FRAMES = 16          # Frames per video
-IMG_SIZE = (112, 112)    # Frame dimensions
-BATCH_SIZE = 4           # Adjust for GPU memory
-NUM_EPOCHS = 30          # Training epochs
-LEARNING_RATE = 0.001    # Initial learning rate
-```
+---
 
-## Training Details
+## 📊 Results
 
-- **Loss Function**: Cross-entropy
-- **Optimizer**: Adam with weight decay (1e-4)
-- **Learning Rate Schedule**: Step decay (×0.5 every 10 epochs)
-- **Gradient Clipping**: Max norm 1.0
-- **Data Split**: 64% train / 16% validation / 20% test
+| Metric | Validation |
+|:-------|:-----------:|
+| **Accuracy** | 99.17% |
+| **Precision** | 98.51% |
+| **Recall** | 100% |
+| **F1 Score** | 99.25% |
 
-## Output Files
+**Confusion Matrix**
+| | Predicted Non-Shoplifting | Predicted Shoplifting |
+|:--|:--:|:--:|
+| **Actual Non-Shoplifting** | 54 | 1 |
+| **Actual Shoplifting** | 0 | 66 |
 
-```
-/content/
-├── augmentation_examples.png          # Augmentation visualization
-├── training_comparison.png            # Training curves
-├── dataset_analysis.png               # Dataset statistics
-├── best_3d_cnn.pth                   # Best model weights
-├── best_cnn-rnn.pth                  # Best model weights
-├── best_transformer.pth              # Best model weights
-├── 3d_cnn_confusion_matrix.png       # Test results
-├── cnn-rnn_confusion_matrix.png      # Test results
-├── transformer_confusion_matrix.png   # Test results
-├── preprocessing_config.json          # Dataset configuration
-└── video_info.csv                     # Video metadata
-```
+✅ The **2D CNN + GRU** model achieved the highest performance with minimal overfitting.
 
-## Performance Expectations
+---
 
-| Model | Parameters | Training Time/Epoch | Expected Accuracy |
-|-------|-----------|---------------------|-------------------|
-| 3D CNN | ~30M | 2-3 min (GPU) | 85-90% |
-| CNN-RNN | ~25M | 1-2 min (GPU) | 87-92% |
-| Transformer | ~35M | 2-3 min (GPU) | 90-95% |
+## Training Curves
 
-*Results vary based on dataset quality and size*
+Loss and accuracy curves across multiple training runs:
 
-## Troubleshooting
+- Continuous improvement with learning rate tuning.
+- Stable convergence without overfitting.
 
-### Out of Memory Errors
-```python
-BATCH_SIZE = 2        # Reduce batch size
-NUM_FRAMES = 8        # Reduce frames
-IMG_SIZE = (64, 64)   # Reduce resolution
-```
+![alt text](download.png)
 
-### Slow Training
-```python
-NUM_FRAMES = 8        # Fewer frames
-NUM_EPOCHS = 15       # Fewer epochs
-```
+---
 
-### Poor Accuracy
-- Increase training epochs (50-100)
-- Add more augmentation
-- Verify label quality
-- Check for data imbalance
-- Tune hyperparameters
+## Evaluation Metrics
 
-## Model Inference
+The evaluation includes:
+- Accuracy, Precision, Recall, F1-score
+- Confusion Matrix
+- Classification Report
 
-```python
-import torch
-from video_classification import VideoTransformer, VideoDataset
-from torch.utils.data import DataLoader
+All metrics computed using **scikit-learn**.
 
-# Load trained model
-model = VideoTransformer(num_classes=2)
-model.load_state_dict(torch.load('/content/best_transformer.pth'))
-model.eval()
+---
 
-# Prepare test video
-test_dataset = VideoDataset(['test_video.mp4'], [0], num_frames=16, augment=False)
-test_loader = DataLoader(test_dataset, batch_size=1)
+## Environment & Dependencies
 
-# Inference
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-model = model.to(device)
+| Library | Version |
+|----------|----------|
+| Python | 3.10+ |
+| PyTorch | 2.x |
+| torchvision | 0.16+ |
+| OpenCV | 4.x |
+| NumPy | 1.26+ |
+| Matplotlib | 3.x |
+| scikit-learn | 1.x |
+| tqdm | — |
 
-with torch.no_grad():
-    for video, _ in test_loader:
-        video = video.to(device)
-        output = model(video)
-        prob = torch.softmax(output, dim=1)
-        _, predicted = torch.max(output, 1)
-        
-        label = 'Stolen' if predicted.item() == 1 else 'Original'
-        confidence = prob[0][predicted.item()].item() * 100
-        
-        print(f"Prediction: {label} (Confidence: {confidence:.2f}%)")
-```
+---
 
-## Project Structure
+## Future Work
 
-```
-video-classification/
-├── video_classification.py    # Main training script
-├── data_analyzer.py           # Dataset analysis tools
-├── README.md                  # This file
-└── requirements.txt           # Dependencies
-```
-
-## Requirements
-
-- Python 3.8+
-- PyTorch 1.9+
-- CUDA 11.0+ (recommended for GPU training)
-- 8GB+ GPU memory (for batch size 4)
-
-## Citation
-
-If you use this code in your research, please cite:
-
-```bibtex
-@misc{video_classification_2025,
-  title={Video Classification for Stolen Content Detection},
-  author={Your Name},
-  year={2025},
-  howpublished={\url{https://github.com/yourusername/video-classification}}
-}
-```
-
-## License
-
-MIT License - see LICENSE file for details
-
-## Acknowledgments
-
-- 3D CNN architecture inspired by C3D and I3D networks
-- Transformer implementation based on "Attention is All You Need"
-- Video preprocessing techniques from TSN and TSM papers
-
-
-## Future Improvements
-
-- [ ] Add temporal segment networks (TSN)
-- [ ] Implement video swin transformer
-- [ ] Add mixed precision training
-- [ ] Support for longer videos (>30 seconds)
-- [ ] Model ensemble methods
-- [ ] Real-time inference optimization
-- [ ] Multi-class classification support
-- [ ] Transfer learning from pretrained models
-
-## Version History
-
-- **v1.0.0** (2025): Initial release with three architectures
-  - 3D CNN implementation
-  - CNN-RNN hybrid model
-  - Transformer-based model
-  - Complete data pipeline
-
-  - Comprehensive evaluation tools
+- Integrate **Object Detection (YOLO/SSD)** for region-based analysis.  
+- Revisit **Human Pose Estimation (HPE)** for behavioral pattern recognition.  
+- Deploy the trained model with **Flask + HTML/CSS** for real-time inference.  
